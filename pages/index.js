@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import PurchaseDateField from "../components/PurchaseDateField";
+import TeamAccountMenu from "../components/TeamAccountMenu";
+import { getTeamPageProps } from "../lib/server/teamAuth";
 import { WARRANTY_TEMPLATES } from "../lib/warrantyTemplates";
 import { generateWarrantyPdf } from "../lib/generateWarrantyPdf";
 import {
@@ -343,7 +345,7 @@ function Preview({ form, template, products }) {
                 </div>
                 <div style={{ fontSize: pt(7.2), lineHeight: mm(3.3) + "px", textAlign: "right" }}>
                   <p data-testid="certificate-signatory-company" style={{ fontWeight: 700, fontSize: pt(CERTIFICATE_LAYOUT.companyFontSize), lineHeight: mm(CERTIFICATE_LAYOUT.companyLineHeight) + "px", whiteSpace: "nowrap" }}>{CERTIFICATE_SIGNATORY}</p>
-                  <Image src="/authorised-signature-faza.png" alt="Faza Home authorised signature and stamp" width={300} height={300} style={{ display: "block", width: signatureWidth, height: signatureWidth, marginLeft: "auto", marginTop: mm(2) }} />
+                  <Image src="/api/certificate-stamp" unoptimized alt="Faza Home authorised signature and stamp" width={300} height={300} style={{ display: "block", width: signatureWidth, height: signatureWidth, marginLeft: "auto", marginTop: mm(2) }} />
                   <div style={{ width: mm(43), marginLeft: "auto", marginTop: mm(1.5), borderBottom: "1px solid #D5DAE4" }} />
                   <p style={{ marginTop: mm(1.5) }}>AUTHORISED SIGNATORY</p>
                 </div>
@@ -369,7 +371,9 @@ function Preview({ form, template, products }) {
   );
 }
 
-export default function Home() {
+export async function getServerSideProps(context) { return getTeamPageProps(context); }
+
+export default function Home({ user }) {
   const [form, setForm] = useState(initialForm);
   const [selected, setSelected] = useState("ariston-solar");
   const [downloading, setDownloading] = useState(false);
@@ -425,6 +429,11 @@ export default function Home() {
     setDownloading(true);
     setMessage("");
     try {
+      const session = await fetch("/api/auth/session", { cache: "no-store" });
+      if (!session.ok) {
+        if (session.status === 401) window.location.assign("/login/");
+        throw new Error("Please sign in again before downloading a certificate.");
+      }
       const validatedProducts = normalizeWarrantyProducts(products, template);
       await generateWarrantyPdf({ template, ...form, products: validatedProducts });
       setMessage("Your warranty certificate PDF has been downloaded.");
@@ -445,7 +454,7 @@ export default function Home() {
             <Image src="/Faza-Home-Logo.png" alt="Faza Home" width={140} height={60} className="h-auto w-32 object-contain" priority />
             <span className="hidden border-l border-slate-200 pl-4 text-sm font-medium text-slate-500 sm:block">FAZA BUILDING MATERIALS TRADING LLC</span>
           </div>
-          <span className="rounded-full bg-blue-50 px-4 py-2 text-xs font-semibold text-blue-700">Certificate Generator</span>
+          <TeamAccountMenu user={user} />
         </div>
       </header>
 

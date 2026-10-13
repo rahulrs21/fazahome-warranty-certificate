@@ -125,3 +125,5 @@ function LastUploadedFile({ lastPdf, onExtractedDetails }) {
 }
 
 export default LastUploadedFile
+
+export { getTeamPageProps as getServerSideProps } from "../../lib/server/teamAuth";

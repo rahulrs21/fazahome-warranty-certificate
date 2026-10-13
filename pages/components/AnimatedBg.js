@@ -40,3 +40,4 @@ export default function AnimatedBackground() {
     </div>
   );
 }
+export { getTeamPageProps as getServerSideProps } from "../../lib/server/teamAuth";

@@ -438,3 +438,5 @@ const PDFDownload = ({ data, invoice }) => {
 };
 
 export default PDFDownload;
+
+export { getTeamPageProps as getServerSideProps } from "../../lib/server/teamAuth";

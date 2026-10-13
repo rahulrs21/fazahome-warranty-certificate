@@ -1,5 +1,6 @@
 
 import pdfParse from "pdf-parse";
+import { requireTeamApi, sendAuthError } from "../../lib/server/teamAuth";
 
 // Helper to download PDF from URL
 async function fetchPdfBuffer(pdfUrl) {
@@ -15,6 +16,8 @@ export const config = {
 };
 
 export default async function handler(req, res) {
+  try { await requireTeamApi(req, res); }
+  catch (error) { return sendAuthError(res, error); }
   if (req.method === "POST") {
     try {
       // Parse form-data to get pdfUrl and invoiceNumber

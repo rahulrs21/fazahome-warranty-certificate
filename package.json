@@ -6,7 +6,9 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "auth:make-admin": "node scripts/make-admin.mjs",
+    "auth:test": "node tests/auth.integration.mjs"
   },
   "dependencies": {
     "@heroui/accordion": "^2.2.21",
