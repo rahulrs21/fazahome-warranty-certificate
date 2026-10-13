@@ -9,14 +9,99 @@ const PDFDownload = ({ data, invoice }) => {
   const downloadPDF = async () => {
     if (typeof window === "undefined" || !invoiceRef.current) return;
 
-    const html2canvas = (await import("html2canvas")).default;
+    const html2canvas = (await import("html2canvas-pro")).default;
     const jsPDF = (await import("jspdf")).jsPDF;
 
     // Capture screenshot with reduced scale
     const canvas = await html2canvas(invoiceRef.current, {
       scale: 1.25, // Lower than 2 to reduce size 
-      useCORS: true // Helps load external images if any
+      useCORS: true, // Helps load external images if any
+      onclone: (clonedDocument) => {
+        const invoice = clonedDocument.querySelector("[data-pdf-capture]");
+        if (!invoice) {
+          throw new Error("Could not find the cloned invoice for PDF capture.");
+        }
+
+        const colorCanvas = clonedDocument.createElement("canvas");
+        const colorContext = colorCanvas.getContext("2d", { willReadFrequently: true });
+        if (!colorContext) {
+          throw new Error("Could not create a canvas context to normalize invoice colors.");
+        }
+
+        const normalizeLabColors = (value) =>
+          value.replace(/lab\([^)]*\)/gi, (labColor) => {
+            colorContext.clearRect(0, 0, 1, 1);
+            colorContext.fillStyle = "#a1b2c3";
+            const fallbackColor = colorContext.fillStyle;
+            colorContext.fillStyle = labColor;
+            if (colorContext.fillStyle === fallbackColor) {
+              throw new Error(`Could not normalize invoice color: ${labColor}`);
+            }
+            colorContext.fillRect(0, 0, 1, 1);
+            const [red, green, blue, alpha] = colorContext.getImageData(0, 0, 1, 1).data;
+            return `rgba(${red}, ${green}, ${blue}, ${alpha / 255})`;
+          });
+
+        const pseudoRules = [];
+        const elements = [
+          clonedDocument.documentElement,
+          clonedDocument.body,
+          invoice,
+          ...invoice.querySelectorAll("*"),
+        ];
+
+        for (const element of elements) {
+          const elementIndex = pseudoRules.length;
+          const elementPseudoRules = [];
+
+          for (const pseudo of [null, "::before", "::after"]) {
+            const computedStyle = clonedDocument.defaultView.getComputedStyle(element, pseudo);
+            const overrides = [];
+            const properties = [];
+
+            for (let index = 0; index < computedStyle.length; index += 1) {
+              const property = computedStyle[index];
+              properties.push([property, computedStyle.getPropertyValue(property)]);
+            }
+
+            for (const [property, value] of properties) {
+              if (!value.includes("lab(")) continue;
+
+              const normalizedValue = normalizeLabColors(value);
+              if (pseudo) {
+                overrides.push(`${property}: ${normalizedValue} !important;`);
+              } else {
+                element.style.setProperty(property, normalizedValue, "important");
+              }
+            }
+
+            if (pseudo && overrides.length) {
+              elementPseudoRules.push(
+                `[data-pdf-color-fix="${elementIndex}"]${pseudo} { ${overrides.join(" ")} }`
+              );
+            }
+          }
+
+          if (elementPseudoRules.length) {
+            element.setAttribute("data-pdf-color-fix", String(elementIndex));
+            pseudoRules.push(...elementPseudoRules);
+          }
+        }
+
+        if (pseudoRules.length) {
+          const style = clonedDocument.createElement("style");
+          style.textContent = pseudoRules.join("\n");
+          clonedDocument.head.appendChild(style);
+        }
+      },
     });
+
+    // const canvas = await html2canvas(invoiceRef.current, {
+    //   scale: 1.25,
+    //   useCORS: true,
+    //   backgroundColor: "#ffffff",
+    //   logging: false,
+    // });
 
     // Convert to JPEG (smaller than PNG)
     const imgData = canvas.toDataURL("image/jpeg", 0.8); // 0.8 = 80% quality
@@ -27,7 +112,7 @@ const PDFDownload = ({ data, invoice }) => {
       format: "a4",
     });
 
-   
+
 
     const margin = 10;
     const pageWidth = pdf.internal.pageSize.getWidth();
@@ -53,37 +138,37 @@ const PDFDownload = ({ data, invoice }) => {
 
 
 
-   // ✅ Try File System Access API
-  if (window.showSaveFilePicker) {
-    try {
-      const pdfBlob = pdf.output("blob");
+    // ✅ Try File System Access API
+    if (window.showSaveFilePicker) {
+      try {
+        const pdfBlob = pdf.output("blob");
 
-      const fileHandle = await window.showSaveFilePicker({
-        suggestedName: `${invoice} - ${data?.customerName} - Amazon Tax Invoice.pdf`,
-        types: [
-          {
-            description: "PDF Document",
-            accept: { "application/pdf": [".pdf"] },
-          },
-        ],
-      });
+        const fileHandle = await window.showSaveFilePicker({
+          suggestedName: `${invoice} - ${data?.customerName} - Amazon Tax Invoice.pdf`,
+          types: [
+            {
+              description: "PDF Document",
+              accept: { "application/pdf": [".pdf"] },
+            },
+          ],
+        });
 
-      const writable = await fileHandle.createWritable();
-      await writable.write(pdfBlob);
-      await writable.close();
+        const writable = await fileHandle.createWritable();
+        await writable.write(pdfBlob);
+        await writable.close();
 
-      console.log("✅ File saved successfully!");
-    } catch (err) {
-      if (err.name === "AbortError") {
-        console.log("🟡 User canceled the save dialog.");
-      } else {
-        console.error("❌ Error saving file:", err);
+        console.log("✅ File saved successfully!");
+      } catch (err) {
+        if (err.name === "AbortError") {
+          console.log("🟡 User canceled the save dialog.");
+        } else {
+          console.error("❌ Error saving file:", err);
+        }
       }
+    } else {
+      // ❌ Fallback
+      pdf.save(`${invoice} - ${data?.customerName} - Amazon Tax Invoice.pdf`);
     }
-  } else {
-    // ❌ Fallback
-    pdf.save(`${invoice} - ${data?.customerName} - Amazon Tax Invoice.pdf`);
-  }
 
 
 
@@ -97,6 +182,7 @@ const PDFDownload = ({ data, invoice }) => {
     <div style={{ padding: "5px 20px" }}>
       <div
         ref={invoiceRef}
+        data-pdf-capture
         style={{
           maxWidth: "900px",
           margin: "20px auto",
@@ -112,7 +198,17 @@ const PDFDownload = ({ data, invoice }) => {
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <div>
               <Link href="https://www.fazahome.ae" target="_blank">
-                <Image width={120} height={120} src="/Faza-Home-Logo.png" alt="logo" />
+                {/* <Image width={120} height={120} src="/Faza-Home-Logo.png" alt="logo" /> */}
+                <Image
+                  width={120}
+                  height={120}
+                  src="/Faza-Home-Logo.png"
+                  alt="Faza Home logo"
+                  style={{
+                    width: "120px",
+                    height: "auto",
+                  }}
+                />
               </Link>
               <p style={{ color: "#dbeafe", marginTop: "8px" }}>FAZA SANITARY WARE TR. LLC</p>
             </div>
@@ -263,7 +359,17 @@ const PDFDownload = ({ data, invoice }) => {
               <p style={{ color: "#374151", marginBottom: "5px", fontWeight: "600", zIndex: "1", position: "relative" }}>For FAZA SANITARY WARE TR. LLC</p>
               <p style={{ fontSize: "0.95rem", color: "#64748b", zIndex: "1", position: "relative" }}>Authorized Signatory</p>
               <div style={{ marginTop: "-10px", display: "flex", alignItems: "center", justifyContent: "center", zIndex: "0", position: "relative" }}>
-                <Image width={200} height={100} src="/signature.jpg" alt="signature" />
+                {/* <Image width={200} height={100} src="/signature.jpg" alt="signature" /> */}
+                <Image
+                  width={200}
+                  height={100}
+                  src="/signature.jpg"
+                  alt="Authorized signature"
+                  style={{
+                    width: "200px",
+                    height: "auto",
+                  }}
+                />
               </div>
             </div>
           </div>
@@ -273,7 +379,19 @@ const PDFDownload = ({ data, invoice }) => {
             <h3 style={{ fontSize: "1.125rem", fontWeight: "600", color: "#1e293b", marginBottom: "8px", textAlign: "center" }}>
               Our Brand Partners
             </h3>
-            <Image width={1200} height={90} src="/Footer-Logos.jpg" alt="all_brands_logo" style={{ margin: "auto", display: "block" }} />
+            {/* <Image width={1200} height={90} src="/Footer-Logos.jpg" alt="all_brands_logo" style={{ margin: "auto", display: "block" }} /> */}
+            <Image
+              width={1200}
+              height={90}
+              src="/Footer-Logos.jpg"
+              alt="Brand partners"
+              style={{
+                width: "100%",
+                height: "auto",
+                display: "block",
+                margin: "auto",
+              }}
+            />
           </div>
         </div>
 
