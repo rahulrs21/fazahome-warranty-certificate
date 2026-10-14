@@ -1,0 +1,74 @@
+.background {
+  --pointer-x: 50%;
+  --pointer-y: 30%;
+  --shift-x: 0px;
+  --shift-y: 0px;
+  --aurora-bands: repeating-linear-gradient(105deg, #93c5fd 10%, #6ee7b7 15%, #a5b4fc 20%, #c4b5fd 25%, #f9a8d4 30%);
+  --veil-bands: repeating-linear-gradient(105deg, #fff 0%, #fff 7%, transparent 10%, transparent 12%, #fff 16%);
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: #fff;
+}
+
+.parallax {
+  position: absolute;
+  inset: -5%;
+  transform: translate3d(var(--shift-x), var(--shift-y), 0);
+  transition: transform 700ms ease-out;
+}
+
+.ribbons {
+  position: absolute;
+  inset: -20%;
+  background-image: var(--veil-bands), var(--aurora-bands);
+  background-size: 300% 200%, 200% 200%;
+  background-position: 50% 50%, 50% 50%;
+  filter: blur(24px) saturate(0.95);
+  opacity: 0.7;
+  -webkit-mask-image: radial-gradient(ellipse at 100% 0%, #000 12%, transparent 80%);
+  mask-image: radial-gradient(ellipse at 100% 0%, #000 12%, transparent 80%);
+}
+
+.ribbons::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: var(--veil-bands), var(--aurora-bands);
+  background-size: 200% 200%, 100% 200%;
+  background-position: 50% 50%, 50% 50%;
+  mix-blend-mode: multiply;
+  animation: aurora-flow 60s linear infinite;
+}
+
+.spotlight {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(450px circle at var(--pointer-x) var(--pointer-y), rgb(59 130 246 / 5%), transparent 70%);
+}
+
+.vignette {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 25%, #fff 100%);
+}
+
+.background[data-paused="true"] .ribbons::after {
+  animation-play-state: paused;
+}
+
+@keyframes aurora-flow {
+  from { background-position: 50% 50%, 50% 50%; }
+  to { background-position: 350% 50%, 350% 50%; }
+}
+
+@media (max-width: 640px) {
+  .ribbons { opacity: 0.6; filter: blur(20px) saturate(0.95); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ribbons::after { animation: none; }
+  .parallax { transform: none; transition: none; }
+}

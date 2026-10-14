@@ -59,6 +59,17 @@ async function login(email) {
   return cookieHeader.split(";")[0];
 }
 
+async function signup(label) {
+  const email = `${label}-${suffix}@faza-test.example`;
+  const response = await fetch(`http://${emulator}/identitytoolkit.googleapis.com/v1/accounts:signUp?key=demo-key`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password, returnSecureToken: true }),
+  });
+  const result = await response.json();
+  assert.equal(response.status, 200, JSON.stringify(result));
+  ids.push(result.localId);
+  return { uid: result.localId, email, idToken: result.idToken };
+}
+
 try {
   for (const path of ["/", "/admin/", "/components/AnimatedBg/", "/components/lastUploadedFile/", "/components/pdfdownload/"]) {
     const result = await request(path);
@@ -71,6 +82,10 @@ try {
   }
   assert.equal((await request("/api/extract", { method: "POST", body: {} })).status, 401);
   assert.equal((await request("/api/pdf-download", { method: "POST", body: { filename: "test.pdf" } })).status, 401);
+  assert.equal((await request("/api/admin/permissions")).status, 401);
+  assert.equal((await request("/api/auth/register")).status, 405);
+  assert.equal((await request("/api/auth/register", { method: "POST", body: { idToken: "fake", name: "Test" }, origin: "https://attacker.example" })).status, 403);
+  assert.equal((await request("/api/auth/register", { method: "POST", body: { idToken: "fake", name: "Test" } })).status, 401);
   assert.equal((await request("/authorised-signature-faza.png")).status, 404, "Stamp must not be publicly served");
   assert.equal((await request("/api/admin/users", { cookie: "faza_session=forged" })).status, 401);
   assert.equal((await request("/api/auth/session", { method: "POST", body: { idToken: "fake" }, origin: "https://attacker.example" })).status, 403);
@@ -97,6 +112,58 @@ try {
   const ownerInList = (await request("/api/admin/users", { cookie: adminCookie })).data.users.find((item) => item.uid === owner.uid);
   assert.equal(ownerInList.protected, true); assert.equal(ownerInList.role, "admin");
   console.log("PASS: protected owner sign-in, deletion/disable/demotion blocked through direct API requests");
+
+  assert.equal((await request("/api/admin/permissions", { cookie: memberCookie })).status, 403);
+  const applicant = await signup("registration");
+  const application = await request("/api/auth/register", { method: "POST", body: { idToken: applicant.idToken, name: "  New Applicant  ", role: "admin", uid: owner.uid, fazaRegistration: "approved" } });
+  assert.equal(application.status, 201, JSON.stringify(application.data));
+  assert.equal(application.data.status, "pending"); assert.equal(application.headers.get("set-cookie"), null);
+  const pendingRecord = await auth.getUser(applicant.uid);
+  assert.equal(pendingRecord.displayName, "New Applicant");
+  assert.equal(pendingRecord.customClaims.fazaRole, "member");
+  assert.equal(pendingRecord.customClaims.fazaRegistration, "pending");
+  assert.equal((await request("/api/auth/register", { method: "POST", body: { idToken: applicant.idToken, name: "Retry" } })).status, 200, "Interrupted submissions can be retried without changing membership");
+  const pendingSignIn = await request("/api/auth/session", { method: "POST", body: { idToken: await idToken(applicant.email) } });
+  assert.equal(pendingSignIn.status, 403); assert.match(pendingSignIn.data.error, /approval/);
+  assert.equal(pendingSignIn.headers.get("set-cookie"), null);
+  const pendingCookie = `faza_session=${await auth.createSessionCookie(await idToken(applicant.email), { expiresIn: 28800000 })}`;
+  assert.equal((await request("/", { cookie: pendingCookie })).status, 307, "Even a valid Firebase session cannot bypass pending approval");
+  for (const path of ["/api/auth/session", "/api/certificate-stamp", "/api/admin/permissions"]) {
+    assert.equal((await request(path, { cookie: pendingCookie })).status, 401);
+  }
+  const permissionList = await request("/api/admin/permissions", { cookie: adminCookie });
+  assert.ok(permissionList.data.requests.some((record) => record.uid === applicant.uid && record.name === "New Applicant" && record.email === applicant.email && record.role === "member" && record.registeredAt));
+  assert.ok(!JSON.stringify(permissionList.data).includes(password));
+  assert.ok(!(await request("/api/admin/users", { cookie: adminCookie })).data.users.some((record) => record.uid === applicant.uid));
+  assert.equal((await request("/api/admin/users", { cookie: adminCookie, method: "PATCH", body: { uid: applicant.uid, role: "admin" } })).status, 409);
+  assert.equal((await request("/api/admin/permissions", { cookie: memberCookie, method: "POST", body: { uid: applicant.uid, decision: "approve" } })).status, 403);
+  assert.equal((await request("/api/admin/permissions", { cookie: adminCookie, method: "POST", body: { uid: applicant.uid, decision: "approve" }, origin: "https://attacker.example" })).status, 403);
+  assert.equal((await request("/api/admin/permissions", { cookie: adminCookie, method: "POST", body: { uid: owner.uid, decision: "deny" } })).status, 403);
+  const approved = await request("/api/admin/permissions", { cookie: adminCookie, method: "POST", body: { uid: applicant.uid, decision: "approve", role: "admin" } });
+  assert.equal(approved.status, 200, JSON.stringify(approved.data));
+  assert.equal(approved.data.user.role, "member"); assert.equal(approved.data.user.registrationStatus, "approved");
+  const applicantCookie = await login(applicant.email);
+  assert.equal((await request("/", { cookie: applicantCookie })).status, 200);
+  assert.equal((await request("/admin/", { cookie: applicantCookie })).status, 307);
+  assert.equal((await request("/api/admin/permissions", { cookie: applicantCookie })).status, 403);
+  assert.ok((await request("/api/admin/users", { cookie: adminCookie })).data.users.some((record) => record.uid === applicant.uid && record.role === "member"));
+  assert.ok(!(await request("/api/admin/permissions", { cookie: adminCookie })).data.requests.some((record) => record.uid === applicant.uid));
+  assert.equal((await request("/api/admin/users", { cookie: adminCookie, method: "PATCH", body: { uid: applicant.uid, role: "admin" } })).status, 403);
+  assert.equal((await request("/api/admin/permissions", { cookie: adminCookie, method: "POST", body: { uid: applicant.uid, decision: "deny" } })).status, 409);
+  assert.equal((await request("/api/auth/register", { method: "POST", body: { idToken: await idToken(applicant.email), name: "Overwrite" } })).status, 409);
+  console.log("PASS: registration is member-only; pending sessions blocked; admin-only approval moves account to team without granting admin access");
+
+  const deniedApplicant = await signup("denied-registration");
+  assert.equal((await request("/api/auth/register", { method: "POST", body: { idToken: deniedApplicant.idToken, name: "Denied Applicant" } })).status, 201);
+  assert.equal((await request("/api/admin/permissions", { cookie: adminCookie, method: "POST", body: { uid: deniedApplicant.uid, decision: "deny" } })).status, 200);
+  const deniedSignIn = await request("/api/auth/session", { method: "POST", body: { idToken: await idToken(deniedApplicant.email) } });
+  assert.equal(deniedSignIn.status, 403); assert.match(deniedSignIn.data.error, /denied/);
+  assert.ok(!(await request("/api/admin/users", { cookie: adminCookie })).data.users.some((record) => record.uid === deniedApplicant.uid));
+  assert.equal((await request("/api/auth/register", { method: "POST", body: { idToken: await idToken(deniedApplicant.email), name: "Retry denied" } })).status, 403);
+  assert.equal((await request("/api/admin/users", { cookie: adminCookie, method: "PATCH", body: { uid: deniedApplicant.uid, role: "member", disabled: false } })).status, 409);
+  assert.equal((await request("/api/auth/register", { method: "POST", body: { idToken: await idToken(owner.email), name: "Replace owner" } })).status, 403);
+  assert.equal((await request("/api/auth/register", { method: "POST", body: { idToken: await idToken(member.email), name: "Replace member" } })).status, 409);
+  console.log("PASS: denial blocks sign-in/reapplication; existing accounts and protected administrator cannot be overwritten by registration");
 
   assert.equal((await request("/api/pdf-download", { cookie: memberCookie })).status, 405);
   assert.equal((await request("/api/pdf-download", { cookie: memberCookie, method: "POST", origin: "https://attacker.example", body: { filename: "test.pdf" } })).status, 403);

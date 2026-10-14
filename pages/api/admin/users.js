@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { getAdminAuth } from "../../../firebase/admin.mjs";
 import { isProtectedAccount } from "../../../lib/protectedAccount.mjs";
+import { registrationStatus } from "../../../lib/registration.mjs";
 import { authError, publicUser, requireTeamApi, sendAuthError } from "../../../lib/server/teamAuth";
 
 export const config = { api: { bodyParser: { sizeLimit: "16kb" } } };
@@ -12,7 +13,7 @@ export default async function handler(req, res) {
     if (req.method === "GET") {
       const pageToken = typeof req.query.pageToken === "string" ? req.query.pageToken : undefined;
       const result = await auth.listUsers(100, pageToken);
-      return res.json({ users: result.users.map(publicUser), nextPageToken: result.pageToken || null });
+      return res.json({ users: result.users.filter((record) => isProtectedAccount(record) || !["pending", "denied"].includes(registrationStatus(record))).map(publicUser), nextPageToken: result.pageToken || null });
     }
     if (req.method === "POST") {
       const { email, name, role = "member" } = req.body || {};
@@ -40,6 +41,12 @@ export default async function handler(req, res) {
     if (req.method === "DELETE") {
       await auth.deleteUser(uid);
       return res.json({ success: true });
+    }
+    if (["pending", "denied"].includes(registrationStatus(record))) {
+      throw authError(409, "Registration requests must be reviewed in the Permission section.");
+    }
+    if (registrationStatus(record) && role !== undefined && role !== "member") {
+      throw authError(403, "Registered accounts must remain team members. Disable the account to remove access.");
     }
     if (role === undefined && disabled === undefined) throw authError(400, "Choose an account change.");
     if (role !== undefined && !["admin", "member", null].includes(role)) throw authError(400, "Choose a valid role.");

@@ -1,6 +1,6 @@
 # Faza Home team authentication
 
-The generator now requires an approved Firebase account. `admin` accounts manage the team; `member` accounts use the generator. Roles live in the `fazaRole` custom claim and can only be changed by the Admin SDK. There is no public registration page. An account created outside this app has no access until an admin assigns a role.
+The generator requires an approved Firebase account. `admin` accounts manage the team; `member` accounts use the generator. Roles live in the `fazaRole` custom claim and can only be changed on the server. The login page includes registration with name, email and password. Self-registered accounts have no app access until an admin approves their request in **Permission**. The protected administrator is always treated as an admin; other accounts created outside this app have no access until an admin assigns a role.
 
 ## 1. Enable Email/Password
 
@@ -83,6 +83,18 @@ Adding a user in Firebase Console alone does not assign team access; the command
 The enabled account **fazahomeae@gmail.com** is the protected administrator and has permanent app admin access without needing this command. App admins cannot delete or disable this account or remove its admin access. Direct Firebase Console/Admin SDK access remains controlled by Google Cloud IAM.
 
 ## 4. Add your team
+
+### Team registration and approval
+
+1. The applicant opens `/login/`, selects **Register**, and enters their full name, email and a password of at least eight characters.
+2. Firebase's browser SDK creates their password account. A server endpoint verifies their freshly signed-in identity and assigns `fazaRole: member` with `fazaRegistration: pending`. Registration does not issue a website session or redirect to the generator. An interrupted submission can be retried with the same email/password; unfinished new-account submissions must be completed within five minutes of account creation.
+3. An admin opens **Manage team > Permission**, then uses **Refresh** to load new requests. Each row shows the name, email, team-member role and registration time in Dubai.
+4. **Approve** changes the registration status to `approved`. The account appears in **Team accounts** immediately and can sign in using its existing password.
+5. **Deny** changes the status to `denied`. The request leaves the queue; the account remains in Firebase Auth for record keeping, cannot access the generator, and cannot submit another registration. Administrators can manage exceptional corrections with the Firebase Admin SDK.
+
+The Permission UI and API are available only to admins. Current registration status is checked on every protected request, including when a valid Firebase session cookie exists. Pending and denied accounts are excluded from Team accounts. Self-registered accounts remain team members; app admins cannot promote them to admin or bypass review through the regular account-edit API. An approved member can be disabled or deleted from Team accounts. Passwords are handled by Firebase and are never displayed in the approval list.
+
+### Admin-created accounts
 
 1. Sign in as admin and open **Manage team**.
 2. Enter the person's name, email, and **Team member** or **Admin** role.

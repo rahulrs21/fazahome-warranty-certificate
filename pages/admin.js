@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import Head from "next/head";
 import TeamAccountMenu from "../components/TeamAccountMenu";
+import RegistrationPermissions from "../components/RegistrationPermissions";
 import { getTeamPageProps } from "../lib/server/teamAuth";
 
 async function teamRequest(method, body, pageToken) {
@@ -79,13 +80,14 @@ export default function Admin({ user }) {
           {message && <p role="status" className="mt-4 rounded-xl bg-blue-50 p-3 text-sm text-blue-800">{message}</p>}
           {setupLink && <div className="mt-3 flex flex-wrap gap-2"><input aria-label="Password setup link" readOnly value={setupLink} onFocus={(event) => event.target.select()} className={`${fieldStyle} min-w-0 flex-1`} /><button type="button" onClick={async () => { try { await navigator.clipboard.writeText(setupLink); setMessage("Setup link copied. Share it privately with the new member."); } catch { setError("Select the setup link and copy it manually."); } }} className="rounded-xl border border-blue-200 px-4 py-2 text-sm font-semibold text-blue-700">Copy link</button></div>}
         </section>
+        <RegistrationPermissions teamBusy={busy} onApproved={(approved) => setUsers((previous) => [approved, ...previous.filter((record) => record.uid !== approved.uid)])} />
         <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
           <h2 className="mb-4 font-bold">Team accounts</h2>
           {loading ? <p role="status" className="text-sm text-slate-500">Loading team accounts…</p> : (
             <div className="overflow-x-auto"><table className="w-full min-w-[580px] text-left text-sm"><caption className="sr-only">Team accounts and access permissions</caption>
               <thead className="border-b border-slate-200 text-xs text-slate-500"><tr><th scope="col" className="pb-3 font-semibold">Member</th><th scope="col" className="pb-3 font-semibold">Role</th><th scope="col" className="pb-3 font-semibold">Status</th><th scope="col" className="pb-3 text-right font-semibold">Actions</th></tr></thead>
               <tbody>{users.map((record) => <tr key={record.uid} className="border-b border-slate-100 last:border-0"><td className="py-4 pr-3"><p className="font-semibold">{record.name || "Team account"}{record.uid === user.uid && <span className="ml-2 text-xs font-normal text-blue-600">You</span>}{record.protected && <span className="ml-2 rounded-full bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">Protected admin</span>}</p><p className="mt-1 text-xs text-slate-500">{record.email}</p></td>
-                <td className="py-4 pr-3"><select aria-label={`Role for ${record.email}`} value={record.role || ""} disabled={busy || record.uid === user.uid || record.protected} onChange={(event) => change(record, { role: event.target.value || null })} className="rounded-lg border border-slate-200 bg-white p-2 text-xs"><option value="">No access</option><option value="member">Team member</option><option value="admin">Admin</option></select></td>
+                <td className="py-4 pr-3"><select aria-label={`Role for ${record.email}`} value={record.role || ""} disabled={busy || record.uid === user.uid || record.protected || Boolean(record.registrationStatus)} onChange={(event) => change(record, { role: event.target.value || null })} className="rounded-lg border border-slate-200 bg-white p-2 text-xs"><option value="">No access</option><option value="member">Team member</option><option value="admin">Admin</option></select></td>
                 <td className="py-4 pr-3"><span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${record.disabled ? "bg-slate-100 text-slate-500" : record.role ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{record.disabled ? "Disabled" : record.role ? "Active" : "Not approved"}</span></td>
                 <td className="py-4 text-right"><button type="button" disabled={busy || record.uid === user.uid || record.protected} onClick={() => change(record, { disabled: !record.disabled })} className="rounded-lg px-2 py-2 text-xs font-semibold text-blue-600 hover:bg-blue-50 disabled:opacity-30">{record.disabled ? "Enable" : "Disable"}</button><button type="button" disabled={busy || record.uid === user.uid || record.protected} onClick={() => change(record, {}, true)} className="rounded-lg px-2 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-30">Delete</button></td>
               </tr>)}</tbody></table></div>

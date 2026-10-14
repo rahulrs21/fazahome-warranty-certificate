@@ -1,4 +1,5 @@
 import { getAdminAuth } from "../../../firebase/admin.mjs";
+import { registrationStatus } from "../../../lib/registration.mjs";
 import { assertSameOrigin, authError, getSessionUser, preventCaching, publicUser,
   sendAuthError, sessionCookie, SESSION_DURATION, teamRole } from "../../../lib/server/teamAuth";
 
@@ -29,7 +30,11 @@ export default async function handler(req, res) {
     const age = Date.now() / 1000 - token.auth_time;
     if (!Number.isFinite(age) || age < -60 || age > 300) throw authError(401, "Please sign in again to start a new session.");
     const record = await auth.getUser(token.uid);
-    if (!teamRole(record)) throw authError(403, "Your account does not have team access. Please contact your Faza Home administrator.");
+    if (!teamRole(record)) {
+      if (registrationStatus(record) === "pending") throw authError(403, "Your registration is waiting for administrator approval. You can sign in after it is approved.");
+      if (registrationStatus(record) === "denied") throw authError(403, "Your registration was denied. Please contact your administrator.");
+      throw authError(403, "Your account does not have team access. Please contact your Faza Home administrator.");
+    }
     const cookie = await auth.createSessionCookie(idToken, { expiresIn: SESSION_DURATION });
     res.setHeader("Set-Cookie", sessionCookie(cookie));
     return res.json({ user: publicUser(record) });
