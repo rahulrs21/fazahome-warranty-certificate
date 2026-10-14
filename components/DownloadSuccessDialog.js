@@ -55,13 +55,13 @@ export default function DownloadSuccessDialog({ filename, notificationStatus, on
           </div>
         </div>
 
-        <div role="status" aria-live="polite" aria-atomic="true" className={`mt-4 flex items-start gap-3 rounded-xl p-3.5 ${failed ? "bg-amber-50 text-amber-800" : "bg-blue-50 text-blue-800"}`}>
+        {/* <div role="status" aria-live="polite" aria-atomic="true" className={`mt-4 flex items-start gap-3 rounded-xl p-3.5 ${failed ? "bg-amber-50 text-amber-800" : "bg-blue-50 text-blue-800"}`}>
           <NotificationIcon size={18} aria-hidden="true" className={`mt-0.5 shrink-0 ${pending ? "animate-spin motion-reduce:animate-none" : ""}`} />
           <div className="min-w-0">
             <p className="text-xs font-bold">{pending ? "Sending email notification…" : failed ? "Downloaded successfully. Email not sent." : "Email notification sent"}</p>
             <p className="mt-1 break-words text-xs leading-5 opacity-80">{failed ? "Your PDF is saved, but the administrator’s email could not be sent. Please contact your administrator." : pending ? "Sending a copy of the PDF to the administrator." : <>A copy of the PDF was emailed to <span className="font-semibold">{PROTECTED_ADMIN_EMAIL}</span>.</>}</p>
           </div>
-        </div>
+        </div> */}
 
         <button type="button" autoFocus onClick={onClose} className="mt-6 w-full rounded-xl bg-blue-600 px-5 py-3.5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-200">Done</button>
         <p className="mt-3 text-center text-[11px] leading-5 text-slate-400">You can find the PDF in your browser’s downloads.</p>
