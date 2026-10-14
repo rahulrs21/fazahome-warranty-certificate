@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { getAdminAuth } from "../../../firebase/admin.mjs";
+import { isProtectedAccount } from "../../../lib/protectedAccount.mjs";
 import { authError, publicUser, requireTeamApi, sendAuthError } from "../../../lib/server/teamAuth";
 
 export const config = { api: { bodyParser: { sizeLimit: "16kb" } } };
@@ -33,6 +34,9 @@ export default async function handler(req, res) {
     if (typeof uid !== "string" || !uid || uid.length > 128) throw authError(400, "Choose a valid team account.");
     if (uid === actor.uid) throw authError(400, "Use another administrator account to change or remove your own access.");
     const record = await auth.getUser(uid);
+    if (isProtectedAccount(record) && (req.method === "DELETE" || disabled === true || (role !== undefined && role !== "admin"))) {
+      throw authError(403, "The protected Faza Home administrator cannot be deleted, disabled, or have admin access removed.");
+    }
     if (req.method === "DELETE") {
       await auth.deleteUser(uid);
       return res.json({ success: true });

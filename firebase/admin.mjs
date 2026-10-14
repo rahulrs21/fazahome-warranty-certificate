@@ -3,6 +3,17 @@ import { getAuth } from "firebase-admin/auth";
 import { createPrivateKey } from "node:crypto";
 import { existsSync } from "node:fs";
 
+export function normalizePrivateKey(value) {
+  let key = String(value || "").trim();
+  if (key.startsWith('"') && key.endsWith('"')) {
+    try { key = JSON.parse(key); }
+    catch { key = key.slice(1, -1); }
+  } else if (key.startsWith("'") && key.endsWith("'")) {
+    key = key.slice(1, -1);
+  }
+  return key.replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n").replace(/\r\n/g, "\n").trim();
+}
+
 export function getAdminSetupStatus() {
   const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID;
   const emulator = process.env.FIREBASE_AUTH_EMULATOR_HOST;
@@ -25,7 +36,7 @@ export function getAdminSetupStatus() {
     issues.push("Replace FIREBASE_ADMIN_CLIENT_EMAIL with client_email from your service-account JSON.");
   }
   try {
-    const key = createPrivateKey((process.env.FIREBASE_ADMIN_PRIVATE_KEY || "").replace(/\\n/g, "\n"));
+    const key = createPrivateKey(normalizePrivateKey(process.env.FIREBASE_ADMIN_PRIVATE_KEY));
     if (key.asymmetricKeyType !== "rsa") throw new Error("Unsupported key type");
   } catch {
     issues.push("Replace FIREBASE_ADMIN_PRIVATE_KEY with the complete private_key from your service-account JSON, including BEGIN/END lines and line breaks.");
@@ -53,7 +64,7 @@ export function getAdminAuth() {
     }
     const credential = emulator ? undefined : process.env.FIREBASE_ADMIN_PRIVATE_KEY && process.env.FIREBASE_ADMIN_CLIENT_EMAIL
       ? cert({ projectId, clientEmail: process.env.FIREBASE_ADMIN_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_ADMIN_PRIVATE_KEY.replace(/\\n/g, "\n") })
+        privateKey: normalizePrivateKey(process.env.FIREBASE_ADMIN_PRIVATE_KEY) })
       : applicationDefault();
     app = initializeApp({ projectId, ...(credential ? { credential } : {}) }, name);
   }

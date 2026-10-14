@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { getAdminAuth } from "../firebase/admin.mjs";
+import { jsPDF } from "jspdf";
 
 const projectId = process.env.FIREBASE_ADMIN_PROJECT_ID;
 const emulator = process.env.FIREBASE_AUTH_EMULATOR_HOST;
@@ -15,6 +16,9 @@ const auth = getAdminAuth();
 const password = "Faza-Test-Password42!";
 const ids = [];
 const suffix = Date.now();
+const testPdf = new jsPDF();
+testPdf.text("Faza Home notification attachment test", 20, 20);
+const pdfBase64 = Buffer.from(testPdf.output("arraybuffer")).toString("base64");
 
 async function request(path, { method = "GET", body, cookie, origin = base, site } = {}) {
   const url = new URL(path, base);
@@ -66,6 +70,7 @@ try {
     assert.equal((await request(path)).status, 401, path);
   }
   assert.equal((await request("/api/extract", { method: "POST", body: {} })).status, 401);
+  assert.equal((await request("/api/pdf-download", { method: "POST", body: { filename: "test.pdf" } })).status, 401);
   assert.equal((await request("/authorised-signature-faza.png")).status, 404, "Stamp must not be publicly served");
   assert.equal((await request("/api/admin/users", { cookie: "faza_session=forged" })).status, 401);
   assert.equal((await request("/api/auth/session", { method: "POST", body: { idToken: "fake" }, origin: "https://attacker.example" })).status, 403);
@@ -78,6 +83,33 @@ try {
   assert.equal((await request("/api/auth/session", { method: "POST", body: { idToken: await idToken(outsider.email) } })).status, 403);
   const adminCookie = await login(admin.email);
   const memberCookie = await login(member.email);
+  const owner = await auth.createUser({ email: "fazahomeae@gmail.com", password, displayName: "Faza Home" });
+  ids.push(owner.uid);
+  const ownerCookie = await login(owner.email);
+  assert.equal((await request("/api/admin/users", { cookie: ownerCookie })).status, 200, "Existing owner can administer without a role claim");
+  for (const change of [{ method: "DELETE", body: { uid: owner.uid } },
+    ...[{ disabled: true }, { role: null }, { role: "member" }, { role: "member", disabled: false }]
+      .map((patch) => ({ method: "PATCH", body: { uid: owner.uid, ...patch } }))]) {
+    assert.equal((await request("/api/admin/users", { cookie: adminCookie, ...change })).status, 403, JSON.stringify(change));
+    assert.equal((await auth.getUser(owner.uid)).disabled, false);
+    assert.equal((await request("/api/admin/users", { cookie: ownerCookie })).status, 200);
+  }
+  const ownerInList = (await request("/api/admin/users", { cookie: adminCookie })).data.users.find((item) => item.uid === owner.uid);
+  assert.equal(ownerInList.protected, true); assert.equal(ownerInList.role, "admin");
+  console.log("PASS: protected owner sign-in, deletion/disable/demotion blocked through direct API requests");
+
+  assert.equal((await request("/api/pdf-download", { cookie: memberCookie })).status, 405);
+  assert.equal((await request("/api/pdf-download", { cookie: memberCookie, method: "POST", origin: "https://attacker.example", body: { filename: "test.pdf" } })).status, 403);
+  for (const filename of [null, "", "file.txt", "bad\r\nname.pdf", `${"x".repeat(240)}.pdf`]) {
+    assert.equal((await request("/api/pdf-download", { cookie: memberCookie, method: "POST", body: { filename } })).status, 400);
+  }
+  for (const attachment of [undefined, "", "not-a-pdf", Buffer.from("not a PDF").toString("base64")]) {
+    assert.equal((await request("/api/pdf-download", { cookie: memberCookie, method: "POST", body: { filename: "test.pdf", pdfBase64: attachment } })).status, 400);
+  }
+  assert.equal((await request("/api/pdf-download", { cookie: memberCookie, method: "POST", body: { filename: "test.pdf", pdfBase64: "A".repeat(4194308) } })).status, 413);
+  // Run the local app without SMTP credentials: this must fail visibly and never send real mail.
+  assert.equal((await request("/api/pdf-download", { cookie: memberCookie, method: "POST", body: { filename: "test.pdf", pdfBase64 } })).status, 503);
+  console.log("PASS: PDF notification authentication, CSRF, filename/attachment validation, upload limits, unconfigured mail failure");
   assert.equal((await request("/", { cookie: memberCookie })).status, 200);
   assert.equal((await request("/admin/", { cookie: memberCookie })).status, 307);
   assert.equal((await request("/admin/", { cookie: adminCookie })).status, 200);
@@ -114,6 +146,7 @@ try {
   assert.equal((await request("/api/admin/users", { cookie: adminCookie, method: "PATCH", body: { uid: member.uid, disabled: true } })).status, 200);
   assert.equal((await request("/api/auth/session", { cookie: memberCookie })).status, 401);
   assert.equal((await request("/api/certificate-stamp", { cookie: memberCookie })).status, 401);
+  assert.equal((await request("/api/pdf-download", { cookie: memberCookie, method: "POST", body: { filename: "test.pdf" } })).status, 401);
   assert.equal((await request("/api/admin/users", { cookie: adminCookie, method: "PATCH", body: { uid: member.uid, disabled: false, role: "admin" } })).status, 200);
   const promotedCookie = await login(member.email);
   assert.equal((await request("/api/admin/users", { cookie: promotedCookie })).status, 200);

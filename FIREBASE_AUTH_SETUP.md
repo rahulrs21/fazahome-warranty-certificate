@@ -36,6 +36,33 @@ Alternatively, local development can use `GOOGLE_APPLICATION_CREDENTIALS` pointi
 
 Add the same three server variables and your existing public Firebase variables to **Vercel → Project → Settings → Environment Variables** for the environments you use. Redeploy after saving them. Restart `npm run dev` after changing local variables.
 
+### If localhost works but Vercel says “Sign-in is not ready yet”
+
+Your local `.env`/`.env.local` files are excluded from Git and do not populate Vercel's environment settings. That banner means the deployed server's Firebase credentials are missing, malformed, or use different project IDs.
+
+Open the Vercel project for `fazahome-warranty-certificate.vercel.app` and add the following under **Settings → Environment Variables**, selecting **Production**. Select **Preview** as well if you use preview deployments.
+
+| Variable | Value |
+| --- | --- |
+| `FIREBASE_ADMIN_PROJECT_ID` | `project_id` from the service-account JSON |
+| `FIREBASE_ADMIN_CLIENT_EMAIL` | `client_email` from the same JSON |
+| `FIREBASE_ADMIN_PRIVATE_KEY` | Complete `private_key` from the same JSON |
+| `NEXT_PUBLIC_FIREBASE_API_KEY` | Existing web app API key |
+| `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN` | Existing web app auth domain |
+| `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | Same Firebase project ID as the server |
+| `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID` | Existing web app sender ID |
+| `NEXT_PUBLIC_FIREBASE_APP_ID` | Existing web app app ID |
+
+Enter values in Vercel's **Value** field, without the `VARIABLE_NAME=` prefix. For the private key, prefer the raw PEM value beginning with `-----BEGIN PRIVATE KEY-----` and ending with `-----END PRIVATE KEY-----`, without surrounding quotes. Both actual line breaks and escaped `\n` are supported. The parser also handles surrounding quotes copied from `.env` or JSON. Never add a `NEXT_PUBLIC_` prefix to server credentials.
+
+Do not set `GOOGLE_APPLICATION_CREDENTIALS` to a path on your Windows computer in Vercel. Do not set either emulator host variable in Vercel.
+
+Save the variables, push any code changes, and **redeploy the latest commit**. Environment changes apply only to new deployments. If the banner persists, open that deployment's runtime logs and look for **Faza Home Firebase setup incomplete**; it lists incorrect setting names without printing their values.
+
+If a private key was shared in chat, a screenshot, or Git, generate a replacement key. Update the local environment and Vercel, restart/redeploy and verify sign-in, then delete the disclosed old key under **Google Cloud Console → IAM & Admin → Service Accounts → your service account → Keys**. Identify the old key using `private_key_id` from the old JSON. Replacing a server key preserves your Firebase users and their assigned roles.
+
+References: [Vercel environment variables](https://vercel.com/docs/environment-variables/managing-environment-variables) and [Google service-account key management](https://docs.cloud.google.com/iam/docs/keys-create-delete).
+
 Authentication runs in Next.js API routes on Vercel; Firebase Cloud Functions and a Firestore database are not required for this login system.
 
 ## 3. Create your first admin
@@ -53,6 +80,8 @@ npm run auth:make-admin -- YOUR_FIREBASE_USER_UID
 
 Adding a user in Firebase Console alone does not assign team access; the command above assigns the first admin role. Running it again can restore admin access for an existing enabled account.
 
+The enabled account **fazahomeae@gmail.com** is the protected administrator and has permanent app admin access without needing this command. App admins cannot delete or disable this account or remove its admin access. Direct Firebase Console/Admin SDK access remains controlled by Google Cloud IAM.
+
 ## 4. Add your team
 
 1. Sign in as admin and open **Manage team**.
@@ -64,6 +93,8 @@ Adding a user in Firebase Console alone does not assign team access; the command
 If a setup link cannot be generated, the person can use **Forgot password**. Firebase sends that reset email. Customize those emails under **Authentication → Templates**.
 
 The admin page also lists accounts created in Firebase Console; these initially appear as **Not approved**. Assign a role to approve them. Changing a role, disabling, or deleting an account takes effect on subsequent server requests. Admins cannot change or delete their own account from this page.
+
+The protected administrator appears with a **Protected admin** badge and locked controls. PDF downloads send a designed notification to **fazahomeae@gmail.com** once SMTP is configured; see [EMAIL_NOTIFICATIONS.md](EMAIL_NOTIFICATIONS.md) for Gmail setup.
 
 Under **Authentication → Settings → Authorized domains**, add your production/custom domain and `localhost` for local development if it is missing. Add specific preview domains if your team uses them.
 

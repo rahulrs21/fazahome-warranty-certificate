@@ -103,6 +103,10 @@ export async function getServerSideProps({ req, res }) {
   try { user = await getSessionUser(req); } catch { user = null; }
   if (user) return { redirect: { destination: "/", permanent: false } };
   const setup = getAdminSetupStatus();
+  if (!setup.ready && process.env.NODE_ENV === "production") {
+    // Only setting names and validation messages are logged, never credential values.
+    console.warn("Faza Home Firebase setup incomplete:", setup.issues.join(" "));
+  }
   const hostname = (req.headers.host || "").split(":")[0];
   const localDevelopment = process.env.NODE_ENV !== "production" && ["localhost", "127.0.0.1"].includes(hostname);
   return { props: { configured: setup.ready, setupIssues: localDevelopment ? setup.issues : [] } };

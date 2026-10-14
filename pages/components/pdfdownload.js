@@ -2,6 +2,7 @@ import React, { useRef } from 'react';
 import { FileText, MapPin, Calendar, Hash, Package, File } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
+import { notifyPdfDownload, DOWNLOAD_NOTIFICATION_WARNING } from '../../lib/notifyPdfDownload.mjs';
 
 const PDFDownload = ({ data, invoice }) => {
   const invoiceRef = useRef(null);
@@ -138,13 +139,14 @@ const PDFDownload = ({ data, invoice }) => {
 
 
 
+    const filename = `${invoice} - ${data?.customerName} - Amazon Tax Invoice`.replace(/[\x00-\x1f\x7f]/g, "").slice(0, 230) + ".pdf";
+    const pdfBlob = pdf.output("blob");
     // ✅ Try File System Access API
     if (window.showSaveFilePicker) {
       try {
-        const pdfBlob = pdf.output("blob");
 
         const fileHandle = await window.showSaveFilePicker({
-          suggestedName: `${invoice} - ${data?.customerName} - Amazon Tax Invoice.pdf`,
+          suggestedName: filename,
           types: [
             {
               description: "PDF Document",
@@ -164,11 +166,13 @@ const PDFDownload = ({ data, invoice }) => {
         } else {
           console.error("❌ Error saving file:", err);
         }
+        return;
       }
     } else {
       // ❌ Fallback
-      pdf.save(`${invoice} - ${data?.customerName} - Amazon Tax Invoice.pdf`);
+      await pdf.save(filename, { returnPromise: true });
     }
+    if (!await notifyPdfDownload(filename, pdfBlob)) window.alert(DOWNLOAD_NOTIFICATION_WARNING);
 
 
 

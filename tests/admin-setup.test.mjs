@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
 import { test } from "node:test";
-import { getAdminSetupStatus, getAdminAuth } from "../firebase/admin.mjs";
+import { getAdminSetupStatus, getAdminAuth, normalizePrivateKey } from "../firebase/admin.mjs";
 
 const keys = ["FIREBASE_ADMIN_PROJECT_ID", "NEXT_PUBLIC_FIREBASE_PROJECT_ID", "FIREBASE_ADMIN_CLIENT_EMAIL", "FIREBASE_ADMIN_PRIVATE_KEY", "GOOGLE_APPLICATION_CREDENTIALS", "FIREBASE_AUTH_EMULATOR_HOST"];
 const saved = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
@@ -26,6 +26,11 @@ test("login readiness rejects missing, placeholder, malformed and mismatched cre
     assert.equal(getAdminSetupStatus().ready, true);
     process.env.FIREBASE_ADMIN_PRIVATE_KEY = privateKey.replace(/\n/g, "\\n");
     assert.equal(getAdminSetupStatus().ready, true, "JSON-escaped line breaks are accepted");
+    for (const pasted of [JSON.stringify(privateKey), `"${privateKey}"`, `'${privateKey.replace(/\n/g, "\\n")}'`, privateKey.replace(/\n/g, "\r\n"), privateKey.replace(/\n/g, "\\r\\n")]) {
+      process.env.FIREBASE_ADMIN_PRIVATE_KEY = pasted;
+      assert.equal(getAdminSetupStatus().ready, true, "Vercel-pasted quoting and line breaks are accepted");
+      assert.equal(normalizePrivateKey(pasted), privateKey.trim());
+    }
     process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID = "another-project";
     assert.equal(getAdminSetupStatus().ready, false, "Different client/server projects cannot sign in");
     process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID = "faza-test";

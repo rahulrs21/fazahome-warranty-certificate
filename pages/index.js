@@ -4,9 +4,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import PurchaseDateField from "../components/PurchaseDateField";
 import TeamAccountMenu from "../components/TeamAccountMenu";
+import DownloadSuccessDialog from "../components/DownloadSuccessDialog";
 import { getTeamPageProps } from "../lib/server/teamAuth";
 import { WARRANTY_TEMPLATES } from "../lib/warrantyTemplates";
 import { generateWarrantyPdf } from "../lib/generateWarrantyPdf";
+import { notifyPdfDownload, DOWNLOAD_NOTIFICATION_WARNING } from "../lib/notifyPdfDownload.mjs";
 import {
   CERTIFICATE_COMPANY, CERTIFICATE_CONTACT, CERTIFICATE_SIGNATORY, CERTIFICATE_LAYOUT, certificateStatement,
   certificateWarrantyContent, normalizeWarrantyProducts,
@@ -378,6 +380,8 @@ export default function Home({ user }) {
   const [selected, setSelected] = useState("ariston-solar");
   const [downloading, setDownloading] = useState(false);
   const [message, setMessage] = useState("");
+  const [downloadedPdf, setDownloadedPdf] = useState(null);
+  const [downloadPopupOpen, setDownloadPopupOpen] = useState(false);
   const [productsByBrand, setProductsByBrand] = useState({});
   const nextProductId = useRef(1);
 
@@ -428,6 +432,8 @@ export default function Home({ user }) {
     }
     setDownloading(true);
     setMessage("");
+    setDownloadedPdf(null);
+    setDownloadPopupOpen(false);
     try {
       const session = await fetch("/api/auth/session", { cache: "no-store" });
       if (!session.ok) {
@@ -435,9 +441,13 @@ export default function Home({ user }) {
         throw new Error("Please sign in again before downloading a certificate.");
       }
       const validatedProducts = normalizeWarrantyProducts(products, template);
-      await generateWarrantyPdf({ template, ...form, products: validatedProducts });
-      setMessage("Your warranty certificate PDF has been downloaded.");
+      const { filename, pdfBlob } = await generateWarrantyPdf({ template, ...form, products: validatedProducts });
+      setDownloadedPdf({ filename, notificationStatus: "pending" });
+      setDownloadPopupOpen(true);
       celebrateDownload();
+      const notificationSent = await notifyPdfDownload(filename, pdfBlob);
+      setDownloadedPdf({ filename, notificationStatus: notificationSent ? "sent" : "failed" });
+      if (!notificationSent) setMessage(DOWNLOAD_NOTIFICATION_WARNING);
     } catch (error) {
       console.error("Warranty PDF generation failed:", error);
       setMessage(error.message || "Could not create the PDF. Please try again.");
@@ -527,7 +537,7 @@ export default function Home({ user }) {
                         <path className="opacity-90" d="M12 3a9 9 0 0 1 9 9" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
                       </svg>
                     )}
-                    <span aria-live="polite">{downloading ? "Creating PDF…" : "↓ Download Warranty PDF"}</span>
+                    <span aria-live="polite">{downloading ? downloadedPdf ? "Sending notification…" : "Creating PDF…" : "↓ Download Warranty PDF"}</span>
                   </button>
                 </div>
                 {message && <p role="status" aria-live="polite" className="mt-3 text-sm text-blue-100">{message}</p>}
@@ -549,6 +559,9 @@ export default function Home({ user }) {
         </form>
         <footer className="mt-14 border-t border-slate-200 pt-6 text-center text-xs text-slate-500">© {new Date().getFullYear()} Faza Home • Made by Rahul</footer>
       </div>
+      {downloadPopupOpen && downloadedPdf && (
+        <DownloadSuccessDialog filename={downloadedPdf.filename} notificationStatus={downloadedPdf.notificationStatus} onClose={() => setDownloadPopupOpen(false)} />
+      )}
     </main>
   );
 }

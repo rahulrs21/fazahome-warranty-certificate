@@ -25,6 +25,7 @@
     "multer": "^2.0.2",
     "next": "15.5.27",
     "next-connect": "^1.0.0",
+    "nodemailer": "^10.1.1",
     "path": "^0.12.7",
     "pdf-parse": "^1.1.1",
     "react": "19.1.9",
